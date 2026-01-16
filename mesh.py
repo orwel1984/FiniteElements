@@ -1,6 +1,61 @@
 import numpy as np
 import warnings
 
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+
+def readquad(ext=None, path="."):
+    """
+    Read quadrilateral FEM mesh from files in a given directory.
+
+    Parameters
+    ----------
+    ext : str or None
+        File extension (e.g. 'alt', 'sect')
+    path : str
+        Directory containing mesh files
+
+    Returns
+    -------
+    nodes, xnod, ynod, bnod, nele, nno
+    """
+
+    ex = ""
+    if ext is not None:
+        ex = f".{ext}"
+
+    def fname(base):
+        return os.path.join(path, f"{base}{ex}")
+
+    xnod = np.loadtxt(fname("xcoor"))
+    ynod = np.loadtxt(fname("ycoor"))
+    bnod = np.loadtxt(fname("bnode"), dtype=int)
+
+    nno = xnod.size
+
+    if ynod.size != nno or bnod.size != nno:
+        raise ValueError("Global coordinates erroneous ...")
+
+    if not np.all((bnod == 0) | (bnod == 1)):
+        raise ValueError("Wrong boundary indicator ...")
+
+    nodes_flat = np.loadtxt(fname("nodes"), dtype=int)
+
+    if nodes_flat.size % 4 != 0:
+        raise ValueError("Wrong number of numbers in nodes ...")
+
+    nele = nodes_flat.size // 4
+    nodes = nodes_flat.reshape((nele, 4))
+
+    # MATLAB → Python indexing
+    nodes -= 1
+
+    nodes = meshtest(nodes, xnod, ynod)
+
+    return nodes, xnod, ynod, bnod, nele, nno
+
+
 def meshtest(nodes, xnod, ynod):
     """
     Apply tests to ensure quadrilateral mesh is admissible.
@@ -89,3 +144,38 @@ def meshtest(nodes, xnod, ynod):
                     pos = (pos + 1) % M
 
     return nodesn
+
+
+def plotmesh(xnod, ynod, nodes):
+    """
+    Plot an unstructured 2D quadrilateral mesh.
+
+    Parameters
+    ----------
+    xnod, ynod : (nno,) ndarray
+        Node coordinates
+    nodes : (nele, 4) ndarray of int
+        Element connectivity (0-based)
+    """
+
+    # Flatten connectivity
+    nn = nodes.ravel()
+
+    # Coordinates corresponding to nodes
+    xx = xnod[nn]
+    yy = ynod[nn]
+
+    # Reshape back to element-wise arrays
+    xplot = xx.reshape(nodes.shape)
+    yplot = yy.reshape(nodes.shape)
+
+    plt.clf()
+    plt.gca().set_aspect('equal', adjustable='box')
+
+    # Matplotlib fill: each row is one polygon
+    plt.fill(xplot.T, yplot.T, facecolor='white', edgecolor='black')
+
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.title("Quadrilateral FEM Mesh")
+    plt.show()
