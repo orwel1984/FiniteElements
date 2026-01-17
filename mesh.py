@@ -179,3 +179,78 @@ def plotmesh(xnod, ynod, nodes):
     plt.ylabel("y")
     plt.title("Quadrilateral FEM Mesh")
     plt.show()
+
+
+def refine_quad_mesh(nodes, bnode, xnod, ynod):
+    """
+    Refine a quadrilateral mesh once.
+
+    nodes : (nele,4) element connectivity (0-based indexing)
+    bnode : (nno,) boundary flags, 1 for boundary, 0 otherwise
+    xnod, ynod : node coordinates
+
+    Returns:
+    nodesn, bnodn, xnodn, ynodn, nele, nno
+    """
+    nele = nodes.shape[0]
+    nno = len(xnod)
+    nbn = np.sum(bnode)
+
+    # estimate number of new nodes
+    nnon = nno + 3*nele + nbn//2
+
+    nodesn = np.zeros((4*nele, 4), dtype=int)
+    bnodn = np.zeros(nnon, dtype=int)
+    xnodn = np.zeros(nnon)
+    ynodn = np.zeros(nnon)
+
+    # copy old nodes
+    bnodn[:nno] = bnode
+    xnodn[:nno] = xnod
+    ynodn[:nno] = ynod
+
+    # center weights for element center
+    sum1 = np.ones(4)/4.0
+
+    # map to track mid-edge nodes
+    check = -np.ones((nno, nno), dtype=int)
+
+    idxn = 0
+    nno_new = nno
+
+    for iel in range(nele):
+        iv = nodes[iel]
+
+        # element center
+        xnodn[nno_new] = np.dot(sum1, xnod[iv])
+        ynodn[nno_new] = np.dot(sum1, ynod[iv])
+        nodmid = nno_new
+        nno_new += 1
+
+        # loop over edges (1-2,2-3,3-4,4-1)
+        edges = [(0,1),(1,2),(2,3),(3,0)]
+        midnodes = []
+        for a,b in edges:
+            if check[iv[a], iv[b]] == -1:
+                xnodn[nno_new] = 0.5*(xnod[iv[a]] + xnod[iv[b]])
+                ynodn[nno_new] = 0.5*(ynod[iv[a]] + ynod[iv[b]])
+                check[iv[a], iv[b]] = nno_new
+                check[iv[b], iv[a]] = nno_new
+                # set boundary if both nodes are boundary
+                if bnodn[iv[a]] == 1 and bnodn[iv[b]] == 1:
+                    bnodn[nno_new] = 1
+                nno_new += 1
+            midnodes.append(check[iv[a], iv[b]])
+
+        # define the 4 new elements
+        nodesn[idxn]   = [iv[0], midnodes[0], nodmid, midnodes[3]]
+        nodesn[idxn+1] = [midnodes[0], iv[1], midnodes[1], nodmid]
+        nodesn[idxn+2] = [nodmid, midnodes[1], iv[2], midnodes[2]]
+        nodesn[idxn+3] = [midnodes[3], nodmid, midnodes[2], iv[3]]
+
+        idxn += 4
+
+    nele_new = 4*nele
+    nno_final = nno_new
+
+    return nodesn, bnodn[:nno_final], xnodn[:nno_final], ynodn[:nno_final], nele_new, nno_final
